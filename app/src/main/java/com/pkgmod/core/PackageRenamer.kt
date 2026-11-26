@@ -1,7 +1,10 @@
 package com.pkgmod.core
 
+import android.content.ContentValues
 import android.content.Context
 import android.content.pm.ApplicationInfo
+import android.os.Build
+import android.provider.MediaStore
 import com.pkgmod.arsc.ArscEditor
 import com.pkgmod.axml.AxmlEditor
 import com.pkgmod.dex.DexEditor
@@ -77,14 +80,19 @@ class PackageRenamer(private val context: Context) {
             unsignedApk.delete()
 
             onProgress("校验产物…")
+            val archiveInfo = context.packageManager.getPackageArchiveInfo(signedApk.absolutePath, 0)
+            if (archiveInfo == null) {
+                return RenameResult(false, "产物无法被系统解析（APK 结构或清单异常）")
+            }
             val actualPackage = readPackageName(signedApk)
             if (actualPackage != newPackage) {
                 return RenameResult(false, "校验失败，产物包名为 $actualPackage")
             }
 
-            // 小包额外导出一份到外部目录，安装失败时可以手动点安装；大包不导出，省空间
+            // 小包额外导出到「下载/pkgmod」，方便取出来检查或手动安装；大包跳过省空间
             if (signedApk.length() <= EXPORT_LIMIT_BYTES) {
                 exportedApk = exportApk(signedApk, newPackage)
+                exportToDownloads(signedApk, newPackage)
             }
 
             onProgress("提交安装…")
@@ -106,6 +114,26 @@ class PackageRenamer(private val context: Context) {
         signed.copyTo(target, overwrite = true)
         target
     }.getOrNull()
+
+    /** 再往系统「下载」目录放一份，方便用文件管理器取出来发人（仅小包）。 */
+    private fun exportToDownloads(signed: File, newPackage: String) {
+        runCatching {
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return
+            val resolver = context.contentResolver
+            val values = ContentValues().apply {
+                put(MediaStore.Downloads.DISPLAY_NAME, "$newPackage.apk")
+                put(MediaStore.Downloads.MIME_TYPE, "application/vnd.android.package-archive")
+                put(MediaStore.Downloads.RELATIVE_PATH, "Download/pkgmod")
+                put(MediaStore.Downloads.IS_PENDING, 1)
+            }
+            val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values) ?: return
+            resolver.openOutputStream(uri)?.use { output ->
+                signed.inputStream().use { input -> input.copyTo(output) }
+            } ?: return
+            val done = ContentValues().apply { put(MediaStore.Downloads.IS_PENDING, 0) }
+            resolver.update(uri, done, null, null)
+        }
+    }
 
     private fun computeReplacements(
         apk: File,

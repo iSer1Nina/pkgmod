@@ -235,6 +235,15 @@ class MainActivity : Activity() {
         return AxmlEditor(bytes).packageName()
     }
 
+    override fun onResume() {
+        super.onResume()
+        val lastResult = getSharedPreferences("pkgmod", MODE_PRIVATE)
+            .getString("last_install_result", null)
+        if (!lastResult.isNullOrEmpty()) {
+            status.text = lastResult
+        }
+    }
+
     private fun loadRulesText(): String {
         val custom = File(filesDir, "rules.json")
         if (custom.exists()) return custom.readText()

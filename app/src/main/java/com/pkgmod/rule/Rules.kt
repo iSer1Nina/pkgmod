@@ -35,10 +35,10 @@ data class Rule(
     val replace: ReplaceMode = ReplaceMode.FIXED,
     val value: String = "",
     val enabled: Boolean = true,
-    val scope: Set<String> = setOf("manifest", "arsc", "dex")
+    val scope: Set<String> = setOf("manifest", "arsc")
 ) {
     companion object {
-        val DEFAULT_SCOPE = setOf("manifest", "arsc", "dex")
+        val DEFAULT_SCOPE = setOf("manifest", "arsc")
     }
 }
 
@@ -73,7 +73,7 @@ object RulesParser {
                     replace = ReplaceMode.from(item.optString("replace", "fixed")),
                     value = item.optString("value", ""),
                     enabled = item.optBoolean("enabled", true),
-                    scope = parseScope(item.optString("scope", "manifest,arsc,dex"))
+                    scope = parseScope(item.optString("scope", "manifest,arsc"))
                 )
             )
         }

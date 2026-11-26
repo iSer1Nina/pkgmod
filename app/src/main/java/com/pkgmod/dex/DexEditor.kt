@@ -45,16 +45,29 @@ class DexEditor(input: ByteArray) {
         require(stringIdsSize in 0..5_000_000) { "dex string_ids 数量异常" }
         require(stringIdsOff > 0 && stringIdsOff + stringIdsSize * 4 <= data.size) { "dex string_ids 越界" }
 
+        // 先读出全部字符串：替换后必须仍满足 string_ids 的字典序，否则 ART 会判定为非法 dex
+        val values = Array(stringIdsSize) { "" }
+        val offsets = IntArray(stringIdsSize) { -1 }
+        for (index in 0 until stringIdsSize) {
+            val offset = Bytes.i32(data, stringIdsOff + index * 4)
+            if (offset > 0 && offset < data.size) {
+                offsets[index] = offset
+                values[index] = readString(data, offset)
+            }
+        }
+
         val tail = ByteArrayOutputStream()
         val newOffsets = IntArray(stringIdsSize) { -1 }
         var replaced = 0
 
         for (index in 0 until stringIdsSize) {
-            val offset = Bytes.i32(data, stringIdsOff + index * 4)
-            if (offset <= 0 || offset >= data.size) continue
+            if (offsets[index] < 0) continue
 
-            val value = readString(data, offset)
-            val mapped = mapString(value, oldPkg, newPkg, includePrefix) ?: continue
+            val mapped = mapString(values[index], oldPkg, newPkg, includePrefix) ?: continue
+
+            // 排序保护：替换后的值必须仍落在相邻两项之间
+            if (index > 0 && values[index - 1].compareTo(mapped) >= 0) continue
+            if (index + 1 < stringIdsSize && mapped.compareTo(values[index + 1]) >= 0) continue
 
             newOffsets[index] = data.size + tail.size()
             writeUleb128(tail, mapped.length)
