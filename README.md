@@ -6,26 +6,30 @@
 
 ## 当前状态
 
-全部核心模块已写完（首次编译可能与预期有出入，见下方"验证"）。
+**已在真机跑通**：OnePlus 13T（Android 16.0.3）上，`com.aligames.kuang.kybc.tap` → `com.aligames.kuang.kybd`，
+与原版共存安装并正常进入游戏。
 
 | 模块 | 状态 |
 | --- | --- |
 | 规则引擎（JSON 规则、匹配、替换） | ✅ 已实现 |
 | 已安装应用扫描 + 命中高亮 | ✅ 已实现 |
+| 可视化规则管理（增删改、JSON 编辑、导入文件） | ✅ 已实现 |
 | 二进制 AndroidManifest（AXML）包名改写 | ✅ 已实现（支持变长） |
+| 固定名字的权限 / provider authority 去重改名（共存必需） | ✅ 已实现 |
 | resources.arsc 字符串改写 | ✅ 已实现 |
-| DEX 字符串改写（追加 string_data + 重算校验） | ✅ 已实现 |
+| DEX 字符串改写（追加 string_data + 重算校验 + 排序保护） | ✅ 已实现（默认关闭） |
 | ZIP 重打包 + 对齐（arsc 不压缩、.so 16KB 对齐） | ✅ 已实现 |
 | apksig 重签名（v1+v2+v3） | ✅ 已实现 |
-| PackageInstaller 安装 + 结果回调 | ✅ 已实现 |
+| 安装（PackageInstaller 会话 + 系统安装器兜底） | ✅ 已实现 |
 
 ## 验证
 
-本机没有 JDK / Android SDK / 外网，代码是用 AOSP 头文件核对格式后手写的，**尚未经过编译与真机验证**。
-第一次 GitHub Actions 构建如果报编译错误，把日志贴给我，我来逐条修。
+**真机实测（2026-11-27）**：OnePlus 13T / Android 16.0.3 上完成 `com.aligames.kuang.kybc.tap`
+→ `com.aligames.kuang.kybd` 的改包，与原版共存安装，游戏正常启动。
 
-已经做了的离线验证：`tools/verify_patchers.py` 用合成数据把 AXML / ARSC / DEX 三个改写器的
+离线验证：`tools/verify_patchers.py` 用合成数据把 AXML / ARSC / DEX 三个改写器的
 二进制逻辑完整跑一遍，再用独立解析器校验产物结构（chunk 尺寸、字符串池偏移、checksum、SHA-1）。
+另外 `tools/inspect_apk.py` 可以直接拿真实 APK 做体检和改包预演。
 
 ```bash
 python3 tools/verify_patchers.py
@@ -137,11 +141,16 @@ python3 tools/inspect_apk.py base.apk com.aligames.kuang.kybd --out patched.apk
 1. `PackageManager` 读取已安装应用的 `sourceDir`（APK 无需 root 即可读）。
 2. 规则命中后，把 APK 解到内存：
    - **AXML**：只重建字符串池，改写 `manifest/package`、权限名、`authorities`、`taskAffinity` 等"包名语义"属性，`android:name` 这类类名一律不动。
+   - **共存关键**：`<permission>` 里**不跟包名走的权限**（如 `glalishare.permission.ACCESS_SHARED_DATA`）
+     和**固定 provider authority** 会改成以新包名为前缀的唯一名字。否则原版和共存版会「用不同签名声明同一个权限」，
+     系统直接报「与现有软件包存在冲突」——这是共存版装不上的头号原因。
    - **resources.arsc**：改写全局字符串池中包含旧包名的值（SDK 配置、渠道号等常藏在这里）。
-   - **DEX**：字符串池里与旧包名完全相同、或 `旧包名.xxx` 形式的字符串会被替换（跳过 `Lcom/old/...;` 这类类描述符，避免破坏类引用）。
-3. 重新打包 ZIP（`resources.arsc` 保持不压缩，`.so` 按页对齐）。
-4. 用 `apksig` 重新签名（v1 + v2 + v3）。
-5. `PackageInstaller` 会话安装，系统弹窗手动确认。
+   - **DEX**：默认不动。规则显式指定 `"scope": "manifest,arsc,dex"` 时才尝试，且替换后必须仍满足
+     `string_ids` 字典序，否则跳过（ART 会校验顺序，改错会导致 dex 非法、装不上）。
+3. 重新打包 ZIP（`resources.arsc` 保持不压缩并对齐，`.so` 按页对齐）。
+4. 用 `apksig` 重新签名（v1 + v2 + v3），签名钥匙由 CI 缓存复用，保证多次构建同名包可覆盖升级。
+5. 安装：先尝试 `PackageInstaller` 会话；国产 ROM（如 ColorOS）常拦截后台会话，
+   失败时自动改用「下载/pkgmod」里的产物拉起系统安装器，App 内也会给出一键按钮。
 
 ## 使用流程
 
@@ -150,13 +159,16 @@ python3 tools/inspect_apk.py base.apk com.aligames.kuang.kybd --out patched.apk
 3. 如果应用列表里读不到目标应用（部分系统限制读取其他应用 APK），或你想改的是下载来的
    APK 文件，用首页的「选择 APK 文件改包」：选中文件后会读出包名、按规则匹配，再走同一条流程。
 
-改包产物会同时导出一份到 `Android/data/com.pkgmod/files/pkgmod/<新包名>.apk`，
-系统安装被拒绝时可以到该目录手动点安装，也方便排查。
+改包产物会导出一份到「下载/pkgmod/<新包名>.apk」，会话安装被拦截时可以点 App 里的按钮或到该目录手动安装。
 
 ## 已知限制
 
 - **签名必然变化**：改完的包无法覆盖安装原版，只能共存；依赖原签名的登录、支付、存档可能失效。
+- **签名钥匙**：由 GitHub Actions 缓存复用。若缓存被清理（约 7 天不活跃）后重新构建，
+  钥匙会变，此时同名共存版会报冲突，需要卸载旧的再装。
+- **分享类 SDK**：被改名的固定权限（如 `glalishare`）可能让共存版的分享/账号互通功能不可用，游戏本体不受影响。
+- **大包耗时**：3.4 GB 的包需要重新压缩 + 签名 + 导出，约 10~30 分钟，峰值占用约 7~10 GB 存储。
 - **SDK 服务端校验**：部分 SDK（如九游/阿里游戏）会上报并校验包名，本地改完仍可能被拒。
-- **Android 14/15**：系统拒绝安装 `targetSdk < 23` 的 APK，这类旧包需要额外抬高 `targetSdk`（可能运行异常）。
-- **分体 APK**：带 `split` 的应用（App Bundle 安装）暂时只支持基包，需后续单独处理。
+- **targetSdk < 23**：Android 14+ 拒绝安装这类旧包，需要额外抬高 `targetSdk`（可能运行异常）。
+- **分体 APK**：带 `split` 的应用（App Bundle 安装）暂时只支持基包。
 - 规则替换后的包名必须符合 Java 包名规范，否则会被跳过。

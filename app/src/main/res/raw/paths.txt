@@ -1,0 +1,29 @@
+Tap
+/data/data/com.taptap/files/taptap/tmp/
+
+九游
+/data/user/0/cn.ninegame.gamemanager/files/DownloadPrivate/（开启自动优化下载路径）
+
+/storage/emulated/0/Android/data/cn.ninegame.gamemanager/files/files/Download/apks（关闭自动优化下载路径）
+
+b服
+/data/data/tv.danmaku.bili/files/apks/
+
+应用宝
+/storage/emulated/0/Android/data/com.tencent.android.qqdownloader/files/tassistant/apk/
+
+华为
+/data/data/com.huawei.appmarket/files/
+
+OPPO
+/storage/emulated/0/Android/data/com.heytap.market/files/pkg/
+
+悟饭
+/storage/emulated/0/Android/data/com.join.android.app.mgsim.wufun/files/wufan91/
+
+小米/ViVO/魅族 浏览器下载安装包
+https://m.app.mi.com/ （小米）
+
+http://h5.appstore.vivo.com.cn/period2/index.html#/ （Vivo）
+
+https://game.mlinkapp.com/（魅族）

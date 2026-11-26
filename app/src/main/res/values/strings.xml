@@ -16,6 +16,8 @@
     <string name="rule_enabled_label">启用</string>
     <string name="match_mode_label">匹配方式</string>
     <string name="replace_mode_label">替换方式</string>
+    <string name="paths_title">制作共存包你所需要知道的这些路径</string>
+    <string name="got_it">知道了</string>
     <string name="import_file">导入文件</string>
     <string name="pick_apk">选择 APK 文件改包</string>
     <string name="rules_hint">规则 JSON：保存后立即生效。按数组顺序匹配，第一条命中即停止。</string>

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="accent">#6750A4</color>
+    <color name="accent_soft">#EADDFF</color>
+    <color name="surface">#FFFFFF</color>
+    <color name="surface_tint">#F4F0FA</color>
+    <color name="text_primary">#1C1B1F</color>
+    <color name="text_secondary">#5A5560</color>
+    <color name="card_stroke">#E7E0EC</color>
+</resources>

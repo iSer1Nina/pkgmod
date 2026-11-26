@@ -18,8 +18,9 @@
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
-        android:divider="#22000000"
-        android:dividerHeight="1dp" />
+        android:divider="#00000000"
+        android:dividerHeight="8dp"
+        android:scrollbars="none" />
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -29,20 +30,25 @@
 
         <Button
             android:id="@+id/btnAddRule"
+            style="@style/Widget.PkgMod.Button"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
+            android:layout_marginEnd="5dp"
             android:layout_weight="1"
             android:text="@string/add_rule" />
 
         <Button
             android:id="@+id/btnResetDefaults"
+            style="@style/Widget.PkgMod.Button"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
+            android:layout_marginEnd="5dp"
             android:layout_weight="1"
             android:text="@string/reset_rules" />
 
         <Button
             android:id="@+id/btnJsonEditor"
+            style="@style/Widget.PkgMod.Button"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
@@ -51,8 +57,10 @@
 
     <Button
         android:id="@+id/btnSaveRuleList"
+        style="@style/Widget.PkgMod.Button"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:layout_marginTop="5dp"
         android:text="@string/save" />
 
 </LinearLayout>

@@ -8,7 +8,7 @@ android {
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "com.pkgmod"
+        applicationId = "com.a9gcbgj.nina"
         minSdk = 26
         targetSdk = 34
         versionCode = 1

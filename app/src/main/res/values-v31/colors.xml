@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Android 12+ 莫奈取色：直接引用系统动态调色板的强调色 -->
+    <color name="accent">@android:color/system_accent1_600</color>
+    <color name="accent_soft">@android:color/system_accent1_100</color>
+</resources>

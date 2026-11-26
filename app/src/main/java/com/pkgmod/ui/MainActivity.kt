@@ -4,7 +4,9 @@ import android.app.Activity
 import android.app.AlertDialog
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.view.WindowManager
 import android.widget.Button
 import android.widget.ListView
 import android.widget.TextView
@@ -52,6 +54,34 @@ class MainActivity : Activity() {
 
         loadRules()
         scan()
+        showPathsDialog()
+    }
+
+    /** 每次打开都要看的“下载路径”说明。 */
+    private fun showPathsDialog() {
+        val body = runCatching {
+            resources.openRawResource(R.raw.paths).bufferedReader().use { it.readText() }
+        }.getOrDefault("")
+
+        val view = layoutInflater.inflate(R.layout.dialog_paths, null)
+        view.findViewById<TextView>(R.id.pathsText).text = body
+
+        val dialog = AlertDialog.Builder(this)
+            .setTitle(R.string.paths_title)
+            .setView(view)
+            .setPositiveButton(R.string.got_it, null)
+            .create()
+
+        dialog.setOnShowListener { blur(dialog) }
+        dialog.show()
+    }
+
+    private fun blur(dialog: AlertDialog) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return
+        val window = dialog.window ?: return
+        window.addFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND)
+        window.setBackgroundBlurRadius(64)
+        window.setDimAmount(0.35f)
     }
 
     private fun loadRules() {
@@ -257,7 +287,11 @@ class MainActivity : Activity() {
                 runCatching { ApkInstaller.openWithSystemInstaller(this, Uri.parse(uri)) }
             }
             .setNegativeButton("已安装，不用了", null)
-            .show()
+            .create()
+            .apply {
+                setOnShowListener { blur(this) }
+                show()
+            }
     }
 
     private fun loadRulesText(): String {
