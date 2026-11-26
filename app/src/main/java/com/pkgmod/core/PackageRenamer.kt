@@ -79,20 +79,37 @@ class PackageRenamer(private val context: Context) {
             }
             unsignedApk.delete()
 
-            onProgress("校验产物…")
-            val archiveInfo = context.packageManager.getPackageArchiveInfo(signedApk.absolutePath, 0)
-            if (archiveInfo == null) {
-                return RenameResult(false, "产物无法被系统解析（APK 结构或清单异常）")
-            }
-            val actualPackage = readPackageName(signedApk)
-            if (actualPackage != newPackage) {
-                return RenameResult(false, "校验失败，产物包名为 $actualPackage")
-            }
-
-            // 小包额外导出到「下载/pkgmod」，方便取出来检查或手动安装；大包跳过省空间
+            // 先导出再自检：即使产物有问题，也能从「下载/pkgmod」取出来排查
             if (signedApk.length() <= EXPORT_LIMIT_BYTES) {
                 exportedApk = exportApk(signedApk, newPackage)
                 exportToDownloads(signedApk, newPackage)
+            }
+
+            onProgress("校验产物…")
+            // 小包做一次完整读取，能发现截断/CRC 损坏
+            if (signedApk.length() <= SELF_CHECK_LIMIT_BYTES) {
+                ZipFile(signedApk).use { zip ->
+                    for (entry in java.util.Collections.list(zip.entries())) {
+                        zip.getInputStream(entry).use { it.readBytes() }
+                    }
+                }
+            }
+            val selfPackage = runCatching { readPackageName(signedApk) }.getOrNull()
+
+            // 先用本应用自己的 APK 验证这个系统 API 在当前设备上确实可用，
+            // 避免 API 本身返回 null 时误判产物有问题
+            val referenceReadable = runCatching {
+                context.packageManager.getPackageArchiveInfo(context.applicationInfo.sourceDir, 0)
+            }.getOrNull() != null
+
+            if (referenceReadable) {
+                val archiveInfo = context.packageManager.getPackageArchiveInfo(signedApk.absolutePath, 0)
+                if (archiveInfo == null) {
+                    return RenameResult(false, "产物无法被系统解析（自检读取包名=$selfPackage）")
+                }
+            }
+            if (selfPackage != newPackage) {
+                return RenameResult(false, "校验失败，产物包名为 $selfPackage")
             }
 
             onProgress("提交安装…")
@@ -203,5 +220,8 @@ class PackageRenamer(private val context: Context) {
 
         /** 超过这个大小就不再额外导出到外部目录，避免几 GB 的重复占用。 */
         private const val EXPORT_LIMIT_BYTES = 512L * 1024 * 1024
+
+        /** 小于这个大小的产物做完整读取自检。 */
+        private const val SELF_CHECK_LIMIT_BYTES = 64L * 1024 * 1024
     }
 }

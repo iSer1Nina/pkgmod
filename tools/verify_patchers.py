@@ -70,6 +70,10 @@ def build_string_pool(strings, utf8):
             body += enc
             body += b"\x00\x00"
 
+    # 池整体按 4 字节对齐（与 aapt 一致）
+    while len(body) % 4 != 0:
+        body.append(0)
+
     size = strings_start + len(body)
     header = bytearray(header_size)
     p16(header, 0, 0x0001)

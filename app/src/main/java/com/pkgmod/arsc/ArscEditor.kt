@@ -185,6 +185,11 @@ class ArscEditor(input: ByteArray) {
             }
         }
 
+        // 池整体按 4 字节对齐
+        while (body.size() % 4 != 0) {
+            body.write(0)
+        }
+
         val header = ByteArray(POOL_HEADER_SIZE)
         Bytes.putU16(header, 0, TYPE_STRING_POOL)
         Bytes.putU16(header, 2, POOL_HEADER_SIZE)
