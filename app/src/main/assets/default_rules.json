@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "rules": [
+    {
+      "name": "阿里游戏渠道：aligames 末位 +1",
+      "match": "exact",
+      "pattern": "com.aligames.kuang.kybc.aligames",
+      "replace": "fixed",
+      "value": "com.aligames.kuang.kybc.aligamet",
+      "enabled": true
+    },
+    {
+      "name": "B 站渠道：bilibili 末位 +1",
+      "match": "exact",
+      "pattern": "com.aligames.kuang.kybc.bilibili",
+      "replace": "fixed",
+      "value": "com.aligames.kuang.kybc.bilibilj",
+      "enabled": true
+    },
+    {
+      "name": "TapTap 渠道：tap 改为 kybd",
+      "match": "exact",
+      "pattern": "com.aligames.kuang.kybc.tap",
+      "replace": "fixed",
+      "value": "com.aligames.kuang.kybd",
+      "enabled": true
+    },
+    {
+      "name": "示例：同前缀渠道末位 +1（默认停用）",
+      "match": "regex",
+      "pattern": "^com\\.aligames\\.kuang\\.kybc\\.[a-z]+$",
+      "replace": "lastCharInc",
+      "enabled": false
+    }
+  ]
+}

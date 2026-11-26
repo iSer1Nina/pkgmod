@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">包名改造器</string>
+    <string name="loading">正在加载…</string>
+    <string name="reload">重新扫描</string>
+    <string name="no_rules">未加载到规则</string>
+    <string name="edit_rules">编辑规则</string>
+    <string name="rules_manage">规则管理</string>
+    <string name="add_rule">新增规则</string>
+    <string name="json_editor">JSON 编辑</string>
+    <string name="save">保存</string>
+    <string name="rules_list_hint">点条目编辑，长按删除。按顺序匹配，第一条命中即停止。</string>
+    <string name="rule_name_hint">规则名称（可空）</string>
+    <string name="rule_pattern_hint">匹配内容（正则模式下填正则表达式）</string>
+    <string name="rule_value_hint">替换结果（末位+1 时忽略）</string>
+    <string name="rule_enabled_label">启用</string>
+    <string name="match_mode_label">匹配方式</string>
+    <string name="replace_mode_label">替换方式</string>
+    <string name="import_file">导入文件</string>
+    <string name="pick_apk">选择 APK 文件改包</string>
+    <string name="rules_hint">规则 JSON：保存后立即生效。按数组顺序匹配，第一条命中即停止。</string>
+    <string name="save_rules">保存并应用</string>
+    <string name="reset_rules">恢复默认</string>
+    <string name="cancel">取消</string>
+</resources>
