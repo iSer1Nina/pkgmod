@@ -59,6 +59,20 @@ class AxmlEditor(input: ByteArray) {
             "manageSpaceActivity",
             "appComponentFactory"
         )
+
+        /** 权限相关属性：值可能是固定名字的权限，需要一起改。 */
+        private val PERMISSION_ATTRIBUTES = setOf(
+            "permission",
+            "readPermission",
+            "writePermission"
+        )
+
+        /** 只有这里列出的元素才是「声明权限」，才需要改成唯一名字。 */
+        private val DECLARED_PERMISSION_ELEMENTS = setOf(
+            "permission",
+            "permission-group",
+            "permission-tree"
+        )
     }
 
     private val data: ByteArray = input.copyOf()
@@ -146,7 +160,8 @@ class AxmlEditor(input: ByteArray) {
      * 返回新的 AXML 字节（原数组不被修改）。
      */
     fun renamePackage(oldPkg: String, newPkg: String): ByteArray {
-        val edits = collectEdits(oldPkg, newPkg)
+        val fixedRenames = buildFixedNameMap(oldPkg, newPkg)
+        val edits = collectEdits(oldPkg, newPkg, fixedRenames)
         if (edits.isEmpty()) return data
 
         val allStrings = ArrayList(strings)
@@ -174,7 +189,11 @@ class AxmlEditor(input: ByteArray) {
         return list.size - 1
     }
 
-    private fun collectEdits(oldPkg: String, newPkg: String): List<Edit> {
+    private fun collectEdits(
+        oldPkg: String,
+        newPkg: String,
+        fixedRenames: Map<String, String>
+    ): List<Edit> {
         val edits = ArrayList<Edit>()
         var elementOrder = 0
         var pos = 8
@@ -208,7 +227,8 @@ class AxmlEditor(input: ByteArray) {
                             ns,
                             value,
                             oldPkg,
-                            newPkg
+                            newPkg,
+                            fixedRenames
                         ) ?: continue
                         edits.add(Edit(elementOrder, index, updated))
                     }
@@ -226,16 +246,22 @@ class AxmlEditor(input: ByteArray) {
         ns: Int,
         value: String,
         oldPkg: String,
-        newPkg: String
+        newPkg: String,
+        fixedRenames: Map<String, String>
     ): String? {
         if (element == "manifest" && attribute == "package" && ns == NO_INDEX) {
             return if (value == oldPkg || value.isEmpty()) newPkg else null
         }
+        // 不跟包名走的权限名 / authority：必须改成唯一名字，否则与原版冲突
+        if (attribute in PERMISSION_ATTRIBUTES) {
+            fixedRenames[value]?.let { return it }
+        }
         if (element in PERMISSION_ELEMENTS && attribute == "name") {
+            fixedRenames[value]?.let { return it }
             return withPrefix(value, oldPkg, newPkg)
         }
         if (element == "provider" && attribute == "authorities") {
-            return replaceAuthorities(value, oldPkg, newPkg)
+            return replaceAuthorities(value, oldPkg, newPkg, fixedRenames)
         }
         if (element in AFFINITY_ELEMENTS && attribute == "taskAffinity") {
             return withPrefix(value, oldPkg, newPkg)
@@ -253,19 +279,84 @@ class AxmlEditor(input: ByteArray) {
         else -> null
     }
 
-    private fun replaceAuthorities(value: String, oldPkg: String, newPkg: String): String? {
-        if (!value.contains(oldPkg)) return null
+    private fun replaceAuthorities(
+        value: String,
+        oldPkg: String,
+        newPkg: String,
+        fixedRenames: Map<String, String>
+    ): String? {
+        if (!value.contains(oldPkg) && fixedRenames.isEmpty()) return null
         var changed = false
         val parts = value.split(';').map { part ->
-            val replaced = withPrefix(part, oldPkg, newPkg)
-            if (replaced != null) {
+            val renamed = fixedRenames[part]
+            if (renamed != null) {
                 changed = true
-                replaced
+                renamed
             } else {
-                part
+                val replaced = withPrefix(part, oldPkg, newPkg)
+                if (replaced != null) {
+                    changed = true
+                    replaced
+                } else {
+                    part
+                }
             }
         }
         return if (changed) parts.joinToString(";") else null
+    }
+
+    /** 收集「不跟包名走」的权限名与 provider authority，生成唯一新名字。 */
+    private fun buildFixedNameMap(oldPkg: String, newPkg: String): Map<String, String> {
+        val result = HashMap<String, String>()
+        var pos = 8
+        while (pos + 8 <= data.size) {
+            val type = Bytes.u16(data, pos)
+            val size = Bytes.i32(data, pos + 4)
+            if (size < 8 || pos + size > data.size) break
+            if (type == TYPE_START_ELEMENT) {
+                val headerSize = Bytes.u16(data, pos + 2)
+                val nameIdx = Bytes.i32(data, pos + 20)
+                if (nameIdx in strings.indices) {
+                    val element = strings[nameIdx]
+                    val attributeStart = Bytes.u16(data, pos + 24)
+                    val attributeCount = Bytes.u16(data, pos + 28)
+                    val attributeBase = pos + headerSize + attributeStart
+                    for (index in 0 until attributeCount) {
+                        val attrOff = attributeBase + index * ATTRIBUTE_SIZE
+                        if (attrOff + ATTRIBUTE_SIZE > data.size) break
+                        val attrNameIdx = Bytes.i32(data, attrOff + 4)
+                        if (attrNameIdx !in strings.indices) continue
+                        val attribute = strings[attrNameIdx]
+                        val value = attributeString(attrOff) ?: continue
+
+                        if (element in DECLARED_PERMISSION_ELEMENTS && attribute == "name" && !isUnderPackage(value, oldPkg)) {
+                            result[value] = uniqueName(newPkg, "perm", value)
+                        }
+                        if (element == "provider" && attribute == "authorities") {
+                            for (part in value.split(';')) {
+                                if (part.isNotEmpty() && !isUnderPackage(part, oldPkg)) {
+                                    result[part] = uniqueName(newPkg, "auth", part)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            pos += size
+        }
+        return result
+    }
+
+    private fun isUnderPackage(value: String, pkg: String): Boolean =
+        value == pkg || value.startsWith("$pkg.")
+
+    private fun uniqueName(newPkg: String, kind: String, value: String): String {
+        val sanitized = buildString {
+            for (ch in value) {
+                append(if (ch.isLetterOrDigit() || ch == '_' || ch == '.') ch else '_')
+            }
+        }
+        return "$newPkg.$kind.$sanitized"
     }
 
     private fun findAttribute(

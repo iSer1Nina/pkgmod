@@ -309,6 +309,7 @@ class AxmlEditor:
     CLASS_NAME_ATTRIBUTES = {
         "name", "targetActivity", "backupAgent", "manageSpaceActivity", "appComponentFactory",
     }
+    DECLARED_PERMISSION_ELEMENTS = {"permission", "permission-group", "permission-tree"}
 
     def __init__(self, data):
         self.data = bytes(data)
@@ -344,13 +345,17 @@ class AxmlEditor:
         typed = i32(self.data, attr_off + 16)
         return self.strings[typed] if 0 <= typed < len(self.strings) else None
 
-    def _map_value(self, element, attribute, ns, value, old, new):
+    def _map_value(self, element, attribute, ns, value, old, new, renames):
         if element == "manifest" and attribute == "package" and ns == -1:
             return new if value in (old, "") else None
+        if attribute in ("permission", "readPermission", "writePermission") and value in renames:
+            return renames[value]
         if element in self.PERMISSION_ELEMENTS and attribute == "name":
+            if value in renames:
+                return renames[value]
             return self._with_prefix(value, old, new)
         if element == "provider" and attribute == "authorities":
-            return self._replace_authorities(value, old, new)
+            return self._replace_authorities(value, old, new, renames)
         if element in self.AFFINITY_ELEMENTS and attribute == "taskAffinity":
             return self._with_prefix(value, old, new)
         # 相对写法（.MainActivity）必须补全为旧包名，否则会去新包名找类
@@ -366,12 +371,59 @@ class AxmlEditor:
             return new + value[len(old):]
         return None
 
-    def _replace_authorities(self, value, old, new):
-        if old not in value:
+    @staticmethod
+    def _is_under(value, pkg):
+        return value == pkg or value.startswith(pkg + ".")
+
+    @staticmethod
+    def _unique_name(new, kind, value):
+        sanitized = "".join(c if (c.isalnum() or c in "_.") else "_" for c in value)
+        return "%s.%s.%s" % (new, kind, sanitized)
+
+    def _fixed_name_map(self, old, new):
+        """不跟包名走的权限名 / authority，需要改成唯一名字，否则会和已安装的原版冲突。"""
+        result = {}
+        pos = 8
+        while pos + 8 <= len(self.data):
+            ctype = u16(self.data, pos)
+            size = i32(self.data, pos + 4)
+            if size < 8 or pos + size > len(self.data):
+                break
+            if ctype == 0x0102:
+                hs = u16(self.data, pos + 2)
+                name_idx = i32(self.data, pos + 20)
+                if 0 <= name_idx < len(self.strings):
+                    element = self.strings[name_idx]
+                    attr_base = pos + hs + u16(self.data, pos + 24)
+                    for a in range(u16(self.data, pos + 28)):
+                        off = attr_base + a * 20
+                        an = i32(self.data, off + 4)
+                        if not (0 <= an < len(self.strings)):
+                            continue
+                        value = self._attr_string(off)
+                        if value is None:
+                            continue
+                        attribute = self.strings[an]
+                        if element in self.DECLARED_PERMISSION_ELEMENTS and attribute == "name" \
+                                and not self._is_under(value, old):
+                            result[value] = self._unique_name(new, "perm", value)
+                        if element == "provider" and attribute == "authorities":
+                            for part in value.split(";"):
+                                if part and not self._is_under(part, old):
+                                    result[part] = self._unique_name(new, "auth", part)
+            pos += size
+        return result
+
+    def _replace_authorities(self, value, old, new, renames):
+        if old not in value and not renames:
             return None
         changed = False
         parts = []
         for part in value.split(";"):
+            if part in renames:
+                changed = True
+                parts.append(renames[part])
+                continue
             replaced = self._with_prefix(part, old, new)
             if replaced is not None:
                 changed = True
@@ -380,7 +432,7 @@ class AxmlEditor:
                 parts.append(part)
         return ";".join(parts) if changed else None
 
-    def _collect_edits(self, old, new):
+    def _collect_edits(self, old, new, renames):
         edits = []
         element_order = 0
         pos = 8
@@ -406,7 +458,7 @@ class AxmlEditor:
                         value = self._attr_string(off)
                         if value is None:
                             continue
-                        updated = self._map_value(element, self.strings[an], ns, value, old, new)
+                        updated = self._map_value(element, self.strings[an], ns, value, old, new, renames)
                         if updated is not None:
                             edits.append((element_order, a, updated))
                 element_order += 1
@@ -420,7 +472,7 @@ class AxmlEditor:
         return len(strings) - 1
 
     def rename_package(self, old, new):
-        edits = self._collect_edits(old, new)
+        edits = self._collect_edits(old, new, self._fixed_name_map(old, new))
         if not edits:
             return self.data
 
