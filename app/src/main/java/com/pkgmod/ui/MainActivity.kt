@@ -251,8 +251,8 @@ class MainActivity : Activity() {
         if (uri.isNullOrEmpty()) return
 
         AlertDialog.Builder(this)
-            .setTitle("没有弹出安装界面？")
-            .setMessage("部分系统会拦截后台安装。点下面的按钮用系统安装器打开产物，效果等同于在文件管理器里点 APK。")
+            .setTitle("安装产物")
+            .setMessage("产物已导出到「下载/pkgmod」。\n\n如果系统没有自动弹出安装界面，点下面的按钮用系统安装器打开（等同于在文件管理器里点 APK；大包会先复制几分钟）。")
             .setPositiveButton("用系统安装器打开") { _, _ ->
                 runCatching { ApkInstaller.openWithSystemInstaller(this, Uri.parse(uri)) }
             }

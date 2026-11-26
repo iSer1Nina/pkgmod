@@ -1,5 +1,6 @@
 package com.pkgmod.core
 
+import android.content.ContentUris
 import android.content.ContentValues
 import android.content.Context
 import android.content.pm.ApplicationInfo
@@ -82,13 +83,16 @@ class PackageRenamer(private val context: Context) {
             unsignedApk.delete()
 
             // 先导出再自检：即使产物有问题，也能从「下载/pkgmod」取出来排查
+            // 产物一律导出到「下载/pkgmod」：会话安装被系统拦截时靠它走系统安装器
+            onProgress("导出产物（大包需要几分钟）…")
+            publishedUri = exportToDownloads(signedApk, newPackage)
+            context.getSharedPreferences("pkgmod", Context.MODE_PRIVATE)
+                .edit()
+                .putString("last_apk_uri", publishedUri?.toString())
+                .apply()
+
             if (signedApk.length() <= EXPORT_LIMIT_BYTES) {
                 exportedApk = exportApk(signedApk, newPackage)
-                publishedUri = exportToDownloads(signedApk, newPackage)
-                context.getSharedPreferences("pkgmod", Context.MODE_PRIVATE)
-                    .edit()
-                    .putString("last_apk_uri", publishedUri?.toString())
-                    .apply()
             }
 
             onProgress("校验产物…")
@@ -142,6 +146,24 @@ class PackageRenamer(private val context: Context) {
     private fun exportToDownloads(signed: File, newPackage: String): Uri? = runCatching {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return@runCatching null
         val resolver = context.contentResolver
+        val collection = MediaStore.Downloads.EXTERNAL_CONTENT_URI
+
+        // 先删掉同名旧产物，避免多次尝试堆积出好几份几 GB 的文件
+        runCatching {
+            resolver.query(
+                collection,
+                arrayOf(MediaStore.Downloads._ID),
+                "${MediaStore.Downloads.DISPLAY_NAME}=? AND ${MediaStore.Downloads.RELATIVE_PATH}=?",
+                arrayOf("$newPackage.apk", "Download/pkgmod/"),
+                null
+            )?.use { cursor ->
+                while (cursor.moveToNext()) {
+                    val id = cursor.getLong(0)
+                    resolver.delete(ContentUris.withAppendedId(collection, id), null, null)
+                }
+            }
+        }
+
         val values = ContentValues().apply {
             put(MediaStore.Downloads.DISPLAY_NAME, "$newPackage.apk")
             put(MediaStore.Downloads.MIME_TYPE, "application/vnd.android.package-archive")
