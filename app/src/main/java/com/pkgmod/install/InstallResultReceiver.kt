@@ -20,7 +20,7 @@ class InstallResultReceiver : BroadcastReceiver() {
 
             PackageInstaller.STATUS_PENDING_USER_ACTION -> {
                 @Suppress("DEPRECATION")
-                val confirm = intent.getParcelableExtra(PackageInstaller.EXTRA_INTENT) as? Intent
+                val confirm = intent.getParcelableExtra(Intent.EXTRA_INTENT) as? Intent
                 if (confirm != null) {
                     confirm.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     context.startActivity(confirm)
