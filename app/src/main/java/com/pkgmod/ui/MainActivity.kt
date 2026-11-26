@@ -165,6 +165,7 @@ class MainActivity : Activity() {
                 busy = false
                 status.text = result.message
                 Toast.makeText(activity, result.message, Toast.LENGTH_LONG).show()
+                maybeOfferManualInstall()
             }
         }.start()
     }
@@ -242,6 +243,21 @@ class MainActivity : Activity() {
         if (!lastResult.isNullOrEmpty()) {
             status.text = lastResult
         }
+    }
+
+    private fun maybeOfferManualInstall() {
+        val uri = getSharedPreferences("pkgmod", MODE_PRIVATE)
+            .getString("last_apk_uri", null)
+        if (uri.isNullOrEmpty()) return
+
+        AlertDialog.Builder(this)
+            .setTitle("没有弹出安装界面？")
+            .setMessage("部分系统会拦截后台安装。点下面的按钮用系统安装器打开产物，效果等同于在文件管理器里点 APK。")
+            .setPositiveButton("用系统安装器打开") { _, _ ->
+                runCatching { ApkInstaller.openWithSystemInstaller(this, Uri.parse(uri)) }
+            }
+            .setNegativeButton("已安装，不用了", null)
+            .show()
     }
 
     private fun loadRulesText(): String {

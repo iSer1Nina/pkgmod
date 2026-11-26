@@ -3,6 +3,7 @@ package com.pkgmod.core
 import android.content.ContentValues
 import android.content.Context
 import android.content.pm.ApplicationInfo
+import android.net.Uri
 import android.os.Build
 import android.provider.MediaStore
 import com.pkgmod.arsc.ArscEditor
@@ -62,6 +63,7 @@ class PackageRenamer(private val context: Context) {
         val workDir = File(context.cacheDir, "pkgmod-${System.currentTimeMillis()}")
         workDir.mkdirs()
         var exportedApk: File? = null
+        var publishedUri: Uri? = null
 
         return try {
             // 直接以原 APK 为输入流式重打包，避免为 3GB 级游戏再复制一份
@@ -82,7 +84,11 @@ class PackageRenamer(private val context: Context) {
             // 先导出再自检：即使产物有问题，也能从「下载/pkgmod」取出来排查
             if (signedApk.length() <= EXPORT_LIMIT_BYTES) {
                 exportedApk = exportApk(signedApk, newPackage)
-                exportToDownloads(signedApk, newPackage)
+                publishedUri = exportToDownloads(signedApk, newPackage)
+                context.getSharedPreferences("pkgmod", Context.MODE_PRIVATE)
+                    .edit()
+                    .putString("last_apk_uri", publishedUri?.toString())
+                    .apply()
             }
 
             onProgress("校验产物…")
@@ -113,7 +119,7 @@ class PackageRenamer(private val context: Context) {
             }
 
             onProgress("提交安装…")
-            ApkInstaller.install(context, signedApk, newPackage)
+            ApkInstaller.install(context, signedApk, newPackage, publishedUri)
 
             // 安装会话已经复制过内容，这里可以清理缓存
             runCatching { workDir.deleteRecursively() }
@@ -132,25 +138,25 @@ class PackageRenamer(private val context: Context) {
         target
     }.getOrNull()
 
-    /** 再往系统「下载」目录放一份，方便用文件管理器取出来发人（仅小包）。 */
-    private fun exportToDownloads(signed: File, newPackage: String) {
-        runCatching {
-            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return
-            val resolver = context.contentResolver
-            val values = ContentValues().apply {
-                put(MediaStore.Downloads.DISPLAY_NAME, "$newPackage.apk")
-                put(MediaStore.Downloads.MIME_TYPE, "application/vnd.android.package-archive")
-                put(MediaStore.Downloads.RELATIVE_PATH, "Download/pkgmod")
-                put(MediaStore.Downloads.IS_PENDING, 1)
-            }
-            val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values) ?: return
-            resolver.openOutputStream(uri)?.use { output ->
-                signed.inputStream().use { input -> input.copyTo(output) }
-            } ?: return
-            val done = ContentValues().apply { put(MediaStore.Downloads.IS_PENDING, 0) }
-            resolver.update(uri, done, null, null)
+    /** 再往系统「下载」目录放一份，返回 content:// 地址，供安装失败时拉起系统安装器。 */
+    private fun exportToDownloads(signed: File, newPackage: String): Uri? = runCatching {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return@runCatching null
+        val resolver = context.contentResolver
+        val values = ContentValues().apply {
+            put(MediaStore.Downloads.DISPLAY_NAME, "$newPackage.apk")
+            put(MediaStore.Downloads.MIME_TYPE, "application/vnd.android.package-archive")
+            put(MediaStore.Downloads.RELATIVE_PATH, "Download/pkgmod")
+            put(MediaStore.Downloads.IS_PENDING, 1)
         }
-    }
+        val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+            ?: return@runCatching null
+        resolver.openOutputStream(uri)?.use { output ->
+            signed.inputStream().use { input -> input.copyTo(output) }
+        } ?: return@runCatching null
+        val done = ContentValues().apply { put(MediaStore.Downloads.IS_PENDING, 0) }
+        resolver.update(uri, done, null, null)
+        uri
+    }.getOrNull()
 
     private fun computeReplacements(
         apk: File,
